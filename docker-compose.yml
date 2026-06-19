@@ -1,0 +1,20 @@
+services:
+  redis:
+    image: redis:8.8
+    container_name: gecko-redis
+    restart: unless-stopped
+    volumes: 
+      - redis-data:/data
+    ports: 
+      - 6380:6379
+  db:
+    image: mongo:7.0.34-jammy
+    container_name: gecko-mongo
+    restart: unless-stopped
+    ports:
+      - 27018:27017
+    volumes:
+      - mongo-data:/data/db
+volumes:
+  redis-data:
+  mongo-data:
