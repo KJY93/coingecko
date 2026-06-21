@@ -15,6 +15,20 @@ services:
       - 27018:27017
     volumes:
       - mongo-data:/data/db
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: gecko-rabbitmq
+    restart: unless-stopped
+    ports: 
+      - 5672:5672
+      - 15672:15672
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
 volumes:
   redis-data:
   mongo-data:
+  rabbitmq-data:

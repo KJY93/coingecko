@@ -16,5 +16,6 @@ class Settings(BaseSettings):
     jwt_secret_key:str
     jwt_algorithm:str
     jwt_expire_minutes:int
+    rabbitmq_url:str
 
 settings = Settings()
