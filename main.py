@@ -9,15 +9,18 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from app.core.rate_limiter import limiter
 from app.api.auth import router as auth_router
+from app.services.connections.rabbitmq import rabbitmq_client
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
     await setup_indexes()
     setup_scheduler()
+    await rabbitmq_client.setup()
     yield
     shutdown_scheduler()
     await close_coingecko_client()
+    await rabbitmq_client.close()
 
 app = FastAPI(lifespan=lifespan)
 app.state.limiter = limiter
