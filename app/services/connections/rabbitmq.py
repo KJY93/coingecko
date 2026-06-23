@@ -1,7 +1,11 @@
 from aio_pika import connect_robust, ExchangeType, Message, DeliveryMode
+from aio_pika.exceptions import DeliveryError
 from app.core.config import settings
 from typing import Final
 import json
+import asyncio
+import logging
+from app.core.logging import setup_logging
 
 EXCHANGE_NAME: Final = "market_data_exchange"
 QUEUE_NAME: Final = "market_data"
@@ -13,6 +17,10 @@ DLX_ROUTING_KEY: Final = "market_data_dead"
 RETRY_QUEUE_NAME: Final = "market_data_retry"
 RETRY_DELAY_MS: int = 5000
 MAX_RETRIES: Final = 3
+PUBLISH_TIMEOUT_SECONDS: float = 5.0
+
+setup_logging()
+logger = logging.getLogger(__name__)
 class RabbitMQClient:
     def __init__(self):
         self._connection = None
@@ -35,7 +43,7 @@ class RabbitMQClient:
 
     async def setup(self):
         conn = await self.get_connection()
-        self._channel = await conn.channel()
+        self._channel = await conn.channel(publisher_confirms=True) # added publisher_confirms (True by default)
         await self._channel.set_qos(prefetch_count=PREFETCH_COUNT)
         self._exchange = await self._channel.declare_exchange(EXCHANGE_NAME, ExchangeType.DIRECT, durable=True)
         self._dlx = await self._channel.declare_exchange(DLX_NAME, ExchangeType.DIRECT, durable=True)
@@ -59,11 +67,15 @@ class RabbitMQClient:
         )
     
     async def publish(self, data):
-        message = Message(
-            json.dumps(data).encode(),
-            delivery_mode=DeliveryMode.PERSISTENT,
-        )
-        await self._exchange.publish(message, routing_key=ROUTING_KEY)
+        try:
+            message = Message(
+                json.dumps(data).encode(),
+                delivery_mode=DeliveryMode.PERSISTENT,
+            )
+            await self._exchange.publish(message, routing_key=ROUTING_KEY, timeout=PUBLISH_TIMEOUT_SECONDS)
+        except (DeliveryError, asyncio.TimeoutError) as e:
+            logger.error(f"Publish failed: {e}")
+            raise
     
     async def consume(self, callback):
         await self._queue.consume(callback)

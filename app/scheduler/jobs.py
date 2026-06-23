@@ -15,8 +15,12 @@ async def poll_market_data():
     for page in range(1, TOTAL_PAGES + 1):
         data = await fetch_market_data(page=page, per_page=PER_PAGE)
         logger.info(f"Fetched page {page}: {len(data)} coins")
-        await rabbitmq_client.publish(data)
-        logger.info(f"Published page {page}")
+        try:
+            await rabbitmq_client.publish(data)
+            logger.info(f"Published page {page}")
+        except Exception as e:
+            logger.error(f"Failed to publish page {page}: {e}")
+
         await asyncio.sleep(2)
 
     logger.info("Polling market data completed")
