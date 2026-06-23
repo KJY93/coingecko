@@ -43,21 +43,23 @@ async def test_get_all_coins_uses_pagination(mocker):
     mock_cursor.skip.assert_called_once_with(10)
     mock_cursor.to_list.assert_called_once_with(length=50)
 
-async def test_insert_many_market_data_calls(sample_market_data, mocker):
+async def test_insert_many_market_data_uses_bulk_write(sample_market_data, mocker):
     sample_market_data_list = [sample_market_data]
     mock_db = mocker.patch("app.services.repositories.market_data.db")
-    mock_db.market_data.insert_many = mocker.AsyncMock()
+    mock_db.market_data.bulk_write = mocker.AsyncMock()        
 
-    await insert_many_market_data(sample_market_data_list)
-    mock_db.market_data.insert_many.assert_called_once_with([m.model_dump() for m in sample_market_data_list])
+    await insert_many_market_data(sample_market_data_list)      
+    mock_db.market_data.bulk_write.assert_called_once()      
+    operations = mock_db.market_data.bulk_write.call_args[0][0]  
+    assert len(operations) == 1      
 
 async def test_insert_many_market_data_calls_with_empty_list(mocker):
     sample_market_data_list = []
     mock_db = mocker.patch("app.services.repositories.market_data.db")
-    mock_db.market_data.insert_many = mocker.AsyncMock()
+    mock_db.market_data.bulk_write = mocker.AsyncMock()        
 
     await insert_many_market_data(sample_market_data_list)
-    mock_db.market_data.insert_many.assert_not_called()
+    mock_db.market_data.bulk_write.assert_not_called()         
 
 async def test_get_market_data_history_filters_by_date_range(mocker):
     start = datetime(2026, 6, 1, tzinfo=UTC)
