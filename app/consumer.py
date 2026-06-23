@@ -1,4 +1,5 @@
 import json
+import signal
 import logging
 import asyncio
 from app.models.market_data import MarketDataDB
@@ -47,6 +48,25 @@ async def main():
     await rabbitmq_client.setup()
     await rabbitmq_client.consume(handle_message)
     logger.info("Consumer started, waiting for messages...")
-    await asyncio.Future()
 
-asyncio.run(main())
+    shutdown_event = asyncio.Event()
+    loop = asyncio.get_running_loop()
+
+    try:
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, shutdown_event.set)
+    except NotImplementedError:
+        pass  # for windows - keyboard interrupt to handle
+
+    try:
+        await shutdown_event.wait()
+        logger.info("Shutdown signal received")
+    finally:
+        await rabbitmq_client.close()
+        logger.info("Consumer has been stopped")
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass # windows fallback
