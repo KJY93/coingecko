@@ -13,7 +13,10 @@ logger = logging.getLogger(__name__)
 
 async def handle_message(message):
     try:
-        raw_data = json.loads(message.body)
+        msg = json.loads(message.body)
+        recorded_at = datetime.fromisoformat(msg["recorded_at"])
+        coins = msg["coins"]
+
         market_datas = [
             MarketDataDB(
                 coingecko_id=item["id"],
@@ -23,9 +26,9 @@ async def handle_message(message):
                 total_volume=item.get("total_volume"),
                 market_cap=item.get("market_cap"),
                 price_change_24h=item.get("price_change_24h"),
-                recorded_at=datetime.now(UTC),
+                recorded_at=recorded_at,
             )
-            for item in raw_data
+            for item in coins
         ]
         await insert_many_market_data(market_datas)
         await message.ack()

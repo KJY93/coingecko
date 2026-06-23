@@ -2,6 +2,7 @@ from app.services.coingecko import fetch_coins_list, fetch_market_data
 from app.services.repositories.coin import upsert_coins
 from app.models.coin import CoinDB
 from app.services.connections.rabbitmq import rabbitmq_client
+from datetime import datetime, UTC
 import logging
 import asyncio
 
@@ -14,9 +15,11 @@ async def poll_market_data():
 
     for page in range(1, TOTAL_PAGES + 1):
         data = await fetch_market_data(page=page, per_page=PER_PAGE)
+        recorded_at = datetime.now(UTC)
+        payload = { "recorded_at": recorded_at.isoformat(), "coins": data}
         logger.info(f"Fetched page {page}: {len(data)} coins")
         try:
-            await rabbitmq_client.publish(data)
+            await rabbitmq_client.publish(payload)
             logger.info(f"Published page {page}")
         except Exception as e:
             logger.error(f"Failed to publish page {page}: {e}")

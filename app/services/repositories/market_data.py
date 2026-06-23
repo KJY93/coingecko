@@ -1,13 +1,23 @@
 from app.models.market_data import MarketDataDB
 from datetime import datetime
 from app.services.connections.mongodb import db
+from pymongo import UpdateOne
 
 
 async def insert_many_market_data(records: list[MarketDataDB]) -> None:
     if not records:
         return
-    document_list = [ record.model_dump() for record in records ]
-    await db.market_data.insert_many(document_list)
+    
+    operations = [
+        UpdateOne(
+            {"coingecko_id": r.coingecko_id, "recorded_at": r.recorded_at},
+            {"$set": r.model_dump()},
+            upsert=True,
+        )
+        for r in records
+    ]
+
+    await db.market_data.bulk_write(operations)
 
 async def get_market_data_history(coingecko_id: str, start: datetime, end: datetime, limit: int = 1000) -> list[dict]:
     if not coingecko_id or not start or not end:
