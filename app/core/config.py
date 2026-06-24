@@ -17,5 +17,6 @@ class Settings(BaseSettings):
     jwt_algorithm:str
     jwt_expire_minutes:int
     rabbitmq_url:str
+    rate_limit_enabled: bool = True
 
 settings = Settings()
