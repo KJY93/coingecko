@@ -201,6 +201,86 @@ queue and RabbitMQ spreads the messages across them (competing consumers);
 `prefetch_count` controls how evenly it spreads. I tested this by running a few
 consumers at once and watching the messages split up between them.
 
+## Load testing
+
+Load tested the three public GET endpoints with Locust. For the two endpoints
+that take a coin, the coin can be anything — I just used bitcoin for testing.
+
+(Rate limiting is toggled off for this via `APP_RATE_LIMIT_ENABLED=false`, so
+the test measures real throughput instead of just hitting 429s.)
+
+The scenarios I picked, ramping the load up each time:
+
+- 20 users, 5/s ramp
+- 50 users, 20/s ramp
+- 200 users, 50/s ramp
+- 500 users, 100/s ramp
+
+| Scenario          | Setup                 | RPS | Median | Failures |
+|-------------------|-----------------------|-----|--------|----------|
+| 20 users, 5/s     | 1 worker              | 10  | 13ms   | 0%       |
+| 50 users, 20/s    | 1 worker              | 25  | 13ms   | 0%       |
+| 200 users, 50/s   | 1 worker, pool 20     | 99  | 20ms   | 0.3%     |
+| 200 users, 50/s   | 1 worker, pool 100    | 99  | 9ms    | 0%       |
+| 500 users, 100/s  | 1 worker, pool 100    | 49  | 4100ms | 95%      |
+| 500 users, 100/s  | 4 workers, pool 100   | 250 | 10ms   | 0%       |
+
+20 and 50 users were fine. The first issue showed up at the 200-user case — a
+`MaxConnectionsError`. The Redis connection pool was set to the default of 20.
+The way I understand it: a lot of requests come in, everyone wants a Redis
+connection, but they're all occupied, so requests queue up somewhere and some
+of them get dropped. Changing the pool to 100 fixed it — same load, 0 failures
+(and the median actually dropped from 20ms to 9ms since requests weren't
+waiting on a connection anymore).
+
+Then I went to 500 users + 100/s on 1 worker, and hit a different issue. This
+time the terminal showed no more MaxConnectionsError, so I suspected the single
+worker just couldn't handle that many requests — they were piling up and timing
+out (everything stuck at ~4100ms, 95% failures, and the RPS actually dropped
+from 99 to 49). Bumping it to 4 workers (`uvicorn main:app --workers 4`) solved
+it — same 500-user load, but 0 failures, 10ms median, ~250 RPS.
+
+One thing on the slow tail: there's a ~2s spike on the first requests of each
+run, then it settles to single-digit ms. That's cold start — the connection
+pools warming up and the cache filling on first hit — not a recurring problem.
+
+The Locust output for each run is in [`docs/`](docs/):
+
+- [20 users](docs/load-test-20-users.png)
+- [50 users](docs/load-test-50-users.png)
+- [200 users — pool 20 (the failures)](docs/load-test-200-users-pool20.png)
+- [200 users — pool 100 (fixed)](docs/load-test-200-users-pool100.png)
+- [500 users — 1 worker (collapse)](docs/load-test-500-users-1worker.png)
+- [500 users — 4 workers (fixed)](docs/load-test-500-users-4workers.png)
+
+### What I took from it
+
+Two bottlenecks, and they showed up in order. First the Redis connection pool:
+the default of 20 ran out once a couple hundred users were hitting the cache at
+once, and that was the first thing to start failing. Bumping it to 100 fixed
+that. Second, the number of workers: even with Redis sorted out, a single worker
+couldn't handle 500 concurrent requests, so I ran 4. What I found interesting is
+that I only saw the worker problem clearly after fixing Redis — the bottlenecks
+were stacked, and you fix them one at a time. The way they failed was a hint
+too: the Redis one logged an actual error, but the worker one was silent (the
+requests were timing out before they even reached the app). And none of it was
+the app code — the same code did 250 RPS at 10ms once it was configured right.
+How you run it (pool size, worker count) mattered as much as how it's written.
+
+### Running it
+
+```bash
+# install locust (already in requirements.txt)
+pip install locust
+
+# run the app the production way (multiple workers)
+uvicorn main:app --workers 4
+
+# in another terminal, start locust
+locust -f locustfile.py
+# open http://localhost:8089, set users + host (http://localhost:8000)
+```
+
 ## Status
 
 ### Done
@@ -222,14 +302,13 @@ consumers at once and watching the messages split up between them.
 - tests across models, repositories, services, scheduler, API, auth, and the
   consumer's retry / dead-letter logic — all mocked, no live broker or DB needed
 - dev setup works across Windows + macOS, synced through git
+- load testing on the api endpoints with locust
 
 ### Pending
 
 - better logging around failed messages, consistent levels, maybe some metrics
 - a couple more messaging tests (publish / publish-to-retry; the main consumer
   logic is already covered)
-- load testing (Locust or k6) to find where it falls over and check the scaling
-  actually holds
 - deployment — containerize everything, get it on a cloud host, run the consumer
   as its own service, real secrets, CI/CD
 
