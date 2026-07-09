@@ -1,0 +1,13 @@
+.venv/
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+logs/
+.git/
+.gitignore
+docs/
+tests/
+locustfile.py
+docker-compose.yml
+README.md
