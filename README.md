@@ -281,6 +281,39 @@ locust -f locustfile.py
 # open http://localhost:8089, set users + host (http://localhost:8000)
 ```
 
+## Deployment
+I deployed this project three different ways, mostly to understand 
+what each layer actually does. It's not hosted live right now, but 
+everything needed to reproduce the setup is in this repo — refer to 
+`docker-compose.prod.yml` and `nginx/nginx.conf`.
+
+### How it's set up in production
+nginx sits in front as the only container with published ports (80 
+and 443). It handles the TLS certificate and redirects http to https, 
+then proxies requests to the FastAPI app over Docker's internal 
+network. The app talks to Redis for caching and publishes price 
+updates to RabbitMQ, where a separate consumer worker (same Docker 
+image, different start command) picks them up and writes to MongoDB 
+Atlas. Nothing except nginx is reachable from the internet.
+
+### The journey
+I started with Railway because it was the fastest way to get 
+something live. That worked, until MongoDB refused to start: it 
+needs 500MB of *free* disk space, and Railway's trial caps volumes 
+at exactly 500MB, so after Mongo's own files there wasn't enough 
+left. That pushed me to MongoDB Atlas, which turned out to be the 
+better setup anyway since managed databases are how most production 
+systems work.
+Then I redid the whole thing on a raw EC2 instance to learn what 
+Railway was doing behind the scenes: setting up security groups and 
+SSH, installing Docker on the server, writing a production compose 
+file, configuring nginx as a reverse proxy, and getting a Let's 
+Encrypt certificate working. Another thing I learnt while deploying 
+to AWS was that certbot's auto-renewal would silently fail because 
+nginx holds port 80 (fixed with renewal hooks). I also found that 
+EC2 changes your public IP on every stop/start (fixed with a DuckDNS 
+update script that runs on boot). 
+
 ## Status
 
 ### Done
@@ -303,14 +336,17 @@ locust -f locustfile.py
   consumer's retry / dead-letter logic — all mocked, no live broker or DB needed
 - dev setup works across Windows + macOS, synced through git
 - load testing on the api endpoints with locust
+- deployed three ways: Railway (PaaS), then MongoDB Atlas for the DB, then
+  fully on AWS EC2 — Docker on a raw server, production compose file, nginx
+  reverse proxy with TLS (Let's Encrypt + automated cert renewal), and DuckDNS
+  with boot-time DNS updates
 
 ### Pending
 
+- CI/CD — auto-deploy on push with GitHub Actions
 - better logging around failed messages, consistent levels, maybe some metrics
 - a couple more messaging tests (publish / publish-to-retry; the main consumer
   logic is already covered)
-- deployment — containerize everything, get it on a cloud host, run the consumer
-  as its own service, real secrets, CI/CD
 
 ## Running it locally
 
