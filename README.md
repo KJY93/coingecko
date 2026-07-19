@@ -314,6 +314,17 @@ nginx holds port 80 (fixed with renewal hooks). I also found that
 EC2 changes your public IP on every stop/start (fixed with a DuckDNS 
 update script that runs on boot). 
 
+## CI/CD
+
+Every push to `main` runs a GitHub Actions pipeline: test suite first,
+then a Docker build check. Tests are fully mocked, so CI needs no real
+credentials — `.env.example` stands in for config.
+
+Deploys are manual by design (the EC2 instance runs on-demand to save
+costs): hit "Run workflow" and the pipeline tests, builds, then SSHes
+in to pull and rebuild — using a dedicated deploy key stored in GitHub
+Secrets.
+
 ## Status
 
 ### Done
